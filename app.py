@@ -52,8 +52,6 @@ def verify():
         if payment['status'] == 'authorized':
             print(f"Payment {payment_id} is authorized. Attempting to CAPTURE...")
             # Capture the payment. Amount is required and should match the authorized amount.
-            # Convert amount from string to int, assuming it's available in the payment object
-            # and is in the smallest currency unit (paisa).
             captured_payment = client.payment.capture(payment_id, payment['amount'])
             print(f"Razorpay payment capture response: {captured_payment}")
 
