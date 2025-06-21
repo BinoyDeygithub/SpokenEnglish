@@ -3,9 +3,9 @@ from flask import Flask, render_template, request, jsonify
 import razorpay
 import smtplib
 from email.mime.text import MIMEText
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
 
-load_dotenv()
+#load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "a_super_secret_fallback_key_DO_NOT_USE_IN_PROD")
