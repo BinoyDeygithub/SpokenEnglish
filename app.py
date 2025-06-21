@@ -3,32 +3,37 @@ from flask import Flask, render_template, request, jsonify
 import razorpay
 import smtplib
 from email.mime.text import MIMEText
+from dotenv import load_dotenv # Import load_dotenv for local development
+
+# Load environment variables from .env file for local development
+# In production (e.g., Render), these variables will be provided by the platform directly.
+load_dotenv()
 
 app = Flask(__name__)
-# It's highly recommended to set your secret_key via an environment variable in production
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "your_default_secret_key_if_not_set_in_env")
+# It's crucial to set FLASK_SECRET_KEY for session security.
+# Get it from environment variables. Generate a strong random one for production.
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "a_super_secret_fallback_key_DO_NOT_USE_IN_PROD")
 
-# Correctly load environment variables for Razorpay and SMTP.
-# These MUST be set in your deployment environment (e.g., Render, Heroku, or locally).
+# Correctly load environment variables for Razorpay and SMTP
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET")
 
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL")
-# For Gmail, use an App Password for SMTP_PASSWORD, not your main account password.
+# For Gmail, use an App Password for SMTP_PASSWORD, not your main account password, for security.
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 
-# Initialize Razorpay client with keys from environment variables
+# Initialize Razorpay client. Check if keys are available.
 if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
     client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 else:
-    print("Warning: Razorpay API keys are not set. Payment functionality may not work.")
-    client = None # Or raise an error, depending on desired behavior
+    print("WARNING: Razorpay API keys are not set. Payment functionality may not work.")
+    client = None # Set client to None if keys are missing
 
 @app.route('/')
 def index1():
-    # Pass the RAZORPAY_KEY_ID to the index1.html template
+    # Pass the RAZORPAY_KEY_ID to the index1.html template for any embedded payment forms (if any)
     return render_template('index1.html', key_id=RAZORPAY_KEY_ID)
 
 @app.route('/payment')
@@ -42,23 +47,28 @@ def verify():
     payment_id = data.get('razorpay_payment_id')
     email = data.get('email', '')
 
+    print(f"Received verification request for payment_id: {payment_id}, email: {email}")
+
     if not client:
+        print("ERROR: Razorpay client not initialized. API keys missing.")
         return jsonify({'status': 'failed', 'message': 'Razorpay client not initialized. API keys missing.'})
 
     try:
-        # Fetch payment details from Razorpay to verify status
         payment = client.payment.fetch(payment_id)
+        print(f"Razorpay payment fetch response: {payment}") # Log the full payment object for debugging
+
         if payment['status'] == 'captured':
+            print(f"Payment {payment_id} successfully CAPTURED.")
             # Record the email of the paid user
             with open("paid_emails.txt", "a") as f:
                 f.write(email + "\n")
-            # Send success email to the user
             send_success_email(email)
             return jsonify({'status': 'success'})
         else:
-            return jsonify({'status': 'failed', 'message': 'Payment not captured'})
+            print(f"Payment {payment_id} status is NOT captured. Current status: {payment['status']}")
+            return jsonify({'status': 'failed', 'message': f"Payment not captured. Current status: {payment['status']}"})
     except Exception as e:
-        print(f"Payment verification failed: {e}")
+        print(f"Payment verification failed with exception: {e}")
         return jsonify({'status': 'failed', 'message': str(e)})
 
 @app.route('/dashboard')
@@ -86,7 +96,7 @@ Thanks for joining EnglishPr0!
     msg['To'] = to_email
 
     if not SMTP_EMAIL or not SMTP_PASSWORD:
-        print("Warning: SMTP credentials not set. Email cannot be sent.")
+        print("WARNING: SMTP credentials not set. Email cannot be sent.")
         return
 
     try:
@@ -99,5 +109,5 @@ Thanks for joining EnglishPr0!
         print(f"Failed to send email: {e}")
 
 if __name__ == '__main__':
-    # Set debug to False in a production environment for security
+    # Set debug to False in a production environment for security and performance
     app.run(debug=True)
