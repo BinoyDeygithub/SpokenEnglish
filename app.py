@@ -3,11 +3,11 @@ from flask import Flask, render_template, request, jsonify
 import razorpay
 import smtplib
 from email.mime.text import MIMEText
-from dotenv import load_dotenv # Import load_dotenv for local development
+#from dotenv import load_dotenv # Import load_dotenv for local development
 
 # Load environment variables from .env file for local development
 # In production (e.g., Render), these variables will be provided by the platform directly.
-load_dotenv()
+#load_dotenv()
 
 app = Flask(__name__)
 # It's crucial to set FLASK_SECRET_KEY for session security.
