@@ -3,42 +3,33 @@ from flask import Flask, render_template, request, jsonify
 import razorpay
 import smtplib
 from email.mime.text import MIMEText
-#from dotenv import load_dotenv # Import load_dotenv for local development
+from dotenv import load_dotenv
 
-# Load environment variables from .env file for local development
-# In production (e.g., Render), these variables will be provided by the platform directly.
-#load_dotenv()
+load_dotenv()
 
 app = Flask(__name__)
-# It's crucial to set FLASK_SECRET_KEY for session security.
-# Get it from environment variables. Generate a strong random one for production.
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "a_super_secret_fallback_key_DO_NOT_USE_IN_PROD")
 
-# Correctly load environment variables for Razorpay and SMTP
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET")
 
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL")
-# For Gmail, use an App Password for SMTP_PASSWORD, not your main account password, for security.
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 
-# Initialize Razorpay client. Check if keys are available.
 if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
     client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 else:
     print("WARNING: Razorpay API keys are not set. Payment functionality may not work.")
-    client = None # Set client to None if keys are missing
+    client = None
 
 @app.route('/')
 def index1():
-    # Pass the RAZORPAY_KEY_ID to the index1.html template for any embedded payment forms (if any)
     return render_template('index1.html', key_id=RAZORPAY_KEY_ID)
 
 @app.route('/payment')
 def payment():
-    # Pass the RAZORPAY_KEY_ID to the payment.html template
     return render_template('payment.html', key_id=RAZORPAY_KEY_ID)
 
 @app.route('/verify', methods=['POST'])
@@ -55,25 +46,41 @@ def verify():
 
     try:
         payment = client.payment.fetch(payment_id)
-        print(f"Razorpay payment fetch response: {payment}") # Log the full payment object for debugging
+        print(f"Razorpay payment fetch response: {payment}")
 
-        if payment['status'] == 'captured':
-            print(f"Payment {payment_id} successfully CAPTURED.")
-            # Record the email of the paid user
+        # Check if the payment is 'authorized' and then attempt to capture it
+        if payment['status'] == 'authorized':
+            print(f"Payment {payment_id} is authorized. Attempting to CAPTURE...")
+            # Capture the payment. Amount is required and should match the authorized amount.
+            # Convert amount from string to int, assuming it's available in the payment object
+            # and is in the smallest currency unit (paisa).
+            captured_payment = client.payment.capture(payment_id, payment['amount'])
+            print(f"Razorpay payment capture response: {captured_payment}")
+
+            if captured_payment['status'] == 'captured':
+                print(f"Payment {payment_id} successfully CAPTURED after authorization.")
+                with open("paid_emails.txt", "a") as f:
+                    f.write(email + "\n")
+                send_success_email(email)
+                return jsonify({'status': 'success'})
+            else:
+                print(f"Payment {payment_id} capture failed. New status: {captured_payment['status']}")
+                return jsonify({'status': 'failed', 'message': f"Payment capture failed. Current status: {captured_payment['status']}"})
+        elif payment['status'] == 'captured':
+            print(f"Payment {payment_id} was already CAPTURED.")
             with open("paid_emails.txt", "a") as f:
                 f.write(email + "\n")
             send_success_email(email)
             return jsonify({'status': 'success'})
         else:
-            print(f"Payment {payment_id} status is NOT captured. Current status: {payment['status']}")
+            print(f"Payment {payment_id} status is NOT captured or authorized. Current status: {payment['status']}")
             return jsonify({'status': 'failed', 'message': f"Payment not captured. Current status: {payment['status']}"})
     except Exception as e:
-        print(f"Payment verification failed with exception: {e}")
+        print(f"Payment verification/capture failed with exception: {e}")
         return jsonify({'status': 'failed', 'message': str(e)})
 
 @app.route('/dashboard')
 def dashboard():
-    # This route will render the dashboard for successful payments
     return render_template('dashboard.html')
 
 def send_success_email(to_email):
@@ -101,13 +108,12 @@ Thanks for joining EnglishPr0!
 
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls() # Enable TLS encryption
-            server.login(SMTP_EMAIL, SMTP_PASSWORD) # Log in to SMTP server
-            server.sendmail(SMTP_EMAIL, to_email, msg.as_string()) # Send the email
+            server.starttls()
+            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+            server.sendmail(SMTP_EMAIL, to_email, msg.as_string())
             print(f"Email sent to {to_email}")
     except Exception as e:
         print(f"Failed to send email: {e}")
 
 if __name__ == '__main__':
-    # Set debug to False in a production environment for security and performance
     app.run(debug=True)
